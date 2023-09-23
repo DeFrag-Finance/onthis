@@ -8,11 +8,19 @@ import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeab
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
 import "./L2GmxProxy.sol";
+import "./interfaces/IL2GmxProxy.sol";
 
 contract L2GmxVault is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     L2GmxProxy public gmxProxy;
     // user => address
     mapping(address => address) public userProxy;
+    struct Position {
+        address maker;
+        bool isConfirmed;
+        bool isOpenRequest;
+        bool isLong;
+        uint256 sizeDelta;
+    }
 
     address public eligibleLongPositionOpener;
     address public eligibleShortPositionOpener;
@@ -23,7 +31,11 @@ contract L2GmxVault is OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     function initialize() public initializer {
         __Ownable_init();
-        deployedProxy = address(new L2GmxProxy());
+
+    }
+
+    function setDeployedProxy(address _deployedProxy) public onlyOwner {
+        deployedProxy = _deployedProxy;
     }
 
     function setEligibleLongPositionOpener(
@@ -45,8 +57,9 @@ contract L2GmxVault is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function _createUsersGmxProxy(address owner) private returns (address) {
-        address deployedAddress = Clones.clone(deployedProxy);
-        L2GmxProxy(payable(deployedAddress)).initialize(address(this));
+        address deployedAddress = address(new L2GmxProxy());
+
+        L2GmxProxy(payable(deployedAddress)).initialize();//initialize address(this);
         L2GmxProxy(payable(deployedAddress)).approvePositionRouterPlugin();
 
         userProxy[owner] = address(deployedAddress);
@@ -54,23 +67,39 @@ contract L2GmxVault is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         return address(deployedAddress);
     }
 
-    function _openLeverageLong(address usersProxy, address maker) private {
-        L2GmxProxy(payable(usersProxy)).openX20Long{value: msg.value}(maker);
+    function _openLeverageLong(
+        address usersProxy,
+        address maker
+    ) private returns (bytes32) {
+        return
+            IL2GmxProxy(payable(usersProxy)).openX20Long{value: msg.value}(
+                maker
+            );
     }
 
-    function _openLeverageShort(address usersProxy, address maker) private {
-        L2GmxProxy(payable(usersProxy)).openX20Short{value: msg.value}(maker);
+    function _openLeverageShort(
+        address usersProxy,
+        address maker
+    ) private returns (bytes32) {
+        return
+            L2GmxProxy(payable(usersProxy)).openX20Short{value: msg.value}(
+                maker
+            );
     }
 
     function _closeAllLeveragePositions(
         address usersProxy,
         address maker
     ) private {
-        return L2GmxProxy(payable(usersProxy)).closeAllPositions(maker);
+        return L2GmxProxy(payable(usersProxy)).closeAllPositions{value:msg.value}(maker);
     }
 
-    function openX20Leverage(address maker, bool isLong) external payable {
+    function openX20Leverage(
+        address maker,
+        bool isLong
+    ) external payable returns (bytes32) {
         address usersGmxProxy = userProxy[maker];
+
         // if (isLong) {
         //     require(
         //         msg.sender == eligibleLongPositionOpener,
@@ -88,13 +117,13 @@ contract L2GmxVault is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         }
 
         if (isLong) {
-            _openLeverageLong(usersGmxProxy, maker);
+            return _openLeverageLong(usersGmxProxy, maker);
         } else {
-            _openLeverageShort(usersGmxProxy, maker);
+            return _openLeverageShort(usersGmxProxy, maker);
         }
     }
 
-    function closeAllPositions(address maker) external {
+    function closeAllPositions(address maker) external payable{
         address usersGmxProxy = userProxy[maker];
         // require(
         //     msg.sender == eligiblePositionCloser,
