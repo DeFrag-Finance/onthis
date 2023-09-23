@@ -12,12 +12,15 @@ contract L1OpenGmxLong is L1GmxBase {
             msg.sender,
             true
         );
+        uint256 requiredValue = MAX_SUBMISSION_COST +
+            GAS_LIMIT_FOR_CALL *
+            MAX_FEE_PER_GAS;
 
         CrosschainPortal(CROSS_CHAIN_PORTAL).createRetryableTicket{
             value: msg.value
         }(
-            ARB_RECEIVER,  
-            msg.value,
+            ARB_RECEIVER,
+            msg.value - requiredValue,
             MAX_SUBMISSION_COST,
             msg.sender,
             msg.sender,
